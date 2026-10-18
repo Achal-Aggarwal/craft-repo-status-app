@@ -49,7 +49,7 @@ pub struct AppState {
     config_mtime: Mutex<Option<SystemTime>>,
     snapshot: Mutex<Snapshot>,
     cache: Option<Cache>,
-    refresh_tx: Mutex<Option<mpsc::Sender<()>>>,
+    refresh_tx: Mutex<Option<mpsc::Sender<Wake>>>,
     window_state: Mutex<Option<WindowState>>,
     window_dirty: AtomicBool,
 }
@@ -104,7 +104,16 @@ fn get_meta(app: AppHandle) -> Meta {
 
 #[tauri::command]
 fn refresh_now(state: State<AppState>) {
-    request_refresh(&state);
+    wake_poller(&state, Wake::All);
+}
+
+/// Refetch one repo, leaving the others to the schedule.
+#[tauri::command]
+fn refresh_repo(app: AppHandle, state: State<AppState>, repo: String) {
+    if state.snapshot.lock().unwrap().request(&repo) {
+        emit_snapshot(&app);
+        wake_poller(&state, Wake::Repo);
+    }
 }
 
 /// Only GitHub links leave the app, and they go to the default browser.
@@ -158,9 +167,18 @@ fn quit(app: AppHandle) {
 
 // ───────────────────────────── polling ─────────────────────────────
 
-fn request_refresh(state: &AppState) {
+/// Why the poll thread is woken early.
+#[derive(Clone, Copy, PartialEq)]
+enum Wake {
+    /// Refresh everything (the toolbar button, ⌘R).
+    All,
+    /// A row's refresh button queued its repo in `Snapshot::requested`.
+    Repo,
+}
+
+fn wake_poller(state: &AppState, why: Wake) {
     if let Some(tx) = state.refresh_tx.lock().unwrap().as_ref() {
-        let _ = tx.send(());
+        let _ = tx.send(why);
     }
 }
 
@@ -356,11 +374,17 @@ fn step(app: &AppHandle, pacing: &mut Pacing) {
         snap.poll_secs = cfg.poll_secs();
         snap.stale_after_secs = cfg.stale_secs();
         let paused = pacing.not_before.is_some_and(|t| now < t);
+        // Rows refreshed by hand go first.
         let due = (!paused)
-            .then(|| snap.next_due(now, &schedule(pacing)))
-            .flatten()
-            .map(|e| e.repo.clone());
+            .then(|| {
+                snap.take_requested().or_else(|| {
+                    snap.next_due(now, &schedule(pacing))
+                        .map(|e| e.repo.clone())
+                })
+            })
+            .flatten();
         snap.refreshing = due.is_some();
+        snap.fetching = due.clone();
         due
     };
     if let Some(repo) = &due {
@@ -407,6 +431,7 @@ fn step(app: &AppHandle, pacing: &mut Pacing) {
         };
         pacing.not_before = Some(now + pause);
         snap.refreshing = false;
+        snap.fetching = None;
         // Keep a config error up until the file is fixed.
         if !snap
             .error
@@ -441,7 +466,7 @@ fn step(app: &AppHandle, pacing: &mut Pacing) {
     emit_snapshot(app);
 }
 
-fn spawn_poller(app: AppHandle, rx: mpsc::Receiver<()>) {
+fn spawn_poller(app: AppHandle, rx: mpsc::Receiver<Wake>) {
     std::thread::Builder::new()
         .name("craft-poller".into())
         .spawn(move || {
@@ -459,17 +484,21 @@ fn spawn_poller(app: AppHandle, rx: mpsc::Receiver<()>) {
                     .filter(|d| !d.is_zero())
                     .map_or(TICK, |d| d.min(TICK));
                 match rx.recv_timeout(until_next) {
-                    Ok(()) => {
-                        while rx.try_recv().is_ok() {}
+                    Ok(first) => {
+                        let all = std::iter::once(first)
+                            .chain(rx.try_iter())
+                            .any(|w| w == Wake::All);
                         let now = Utc::now();
-                        if last_manual.is_none_or(|t| (now - t).num_seconds() >= MANUAL_DEBOUNCE) {
+                        let fresh =
+                            last_manual.is_none_or(|t| (now - t).num_seconds() >= MANUAL_DEBOUNCE);
+                        if all && fresh {
                             last_manual = Some(now);
                             pacing.forced_since = Some(now);
-                            // A manual refresh skips the gap or a token pause,
-                            // but never a rate-limit backoff.
-                            if pacing.strikes == 0 {
-                                pacing.not_before = None;
-                            }
+                        }
+                        // A manual refresh, of everything or of one row, skips
+                        // the gap or a token pause, but never a rate-limit backoff.
+                        if (fresh || !all) && pacing.strikes == 0 {
+                            pacing.not_before = None;
                         }
                     }
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -696,7 +725,7 @@ fn build_tray(app: &tauri::App, cfg: &Config) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "toggle" => toggle_window(app),
-            "refresh" => request_refresh(&app.state::<AppState>()),
+            "refresh" => wake_poller(&app.state::<AppState>(), Wake::All),
             "on_top" => {
                 let checked = app
                     .try_state::<TrayItems>()
@@ -756,6 +785,7 @@ pub fn run() {
             get_snapshot,
             get_meta,
             refresh_now,
+            refresh_repo,
             open_url,
             open_config,
             set_always_on_top,

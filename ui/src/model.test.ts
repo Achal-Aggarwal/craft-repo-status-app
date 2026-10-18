@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sortEntries, manualOrder, orderedEntries, nextSort, dropIndex, MANUAL, versionKey, freshness, isStale, ago, compact, tokenStatus,
-  totals, urgentAcross, defaultDir, value, windowById, WINDOWS, COLUMNS, COLUMN,
+  totals, urgentAcross, isRefreshing, defaultDir, value, windowById, WINDOWS, COLUMNS, COLUMN,
 } from './model.ts';
 import type { Activity, RepoEntry, RepoStats, UrgentIssue } from './model.ts';
 
@@ -197,6 +197,13 @@ test('recent-activity columns follow the selected window', () => {
   assert.equal(names(sortEntries(e, 'recent_merged', 'desc', 'all')), 'abold');
   assert.equal(value(a, 'recent_commits', 'release'), null, 'no release');
   assert.deepEqual(WINDOWS.map((w) => w.id), ['10m', '30m', '1h', '4h', '12h', '1d', '7d', 'release', 'all']);
+});
+
+test('a row is refreshing while its repo is being fetched or queued', () => {
+  assert.equal(isRefreshing({ fetching: 'o/a', requested: ['o/b'] }, 'o/a'), true);
+  assert.equal(isRefreshing({ fetching: 'o/a', requested: ['o/b'] }, 'o/b'), true);
+  assert.equal(isRefreshing({ fetching: 'o/a', requested: ['o/b'] }, 'o/c'), false);
+  assert.equal(isRefreshing({}, 'o/a'), false, 'a snapshot from an older build');
 });
 
 test('token status', () => {
