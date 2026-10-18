@@ -106,6 +106,9 @@ export function start(api: Api): () => void {
         : entry.fetched_at ? `Fetched ${localTime(entry.fetched_at)}` : 'Not fetched yet';
       return el('span', { class: 'repo', title: tip }, el('span', { class: 'dot' }), appIcon(entry), link(String(v), gh(entry.repo)));
     }
+    if (col.key === 'fetched') {
+      return v ? el('span', { title: `Fetched ${localTime(String(v))}` }, ago(String(v))) : el('span', { class: 'muted', title: 'Not fetched yet' }, '—');
+    }
     if (!s) return entry.inaccessible ? document.createTextNode('') : el('span', { class: 'muted' }, '—');
     switch (col.key) {
       case 'urgency': {

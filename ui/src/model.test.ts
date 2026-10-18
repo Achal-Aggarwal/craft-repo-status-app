@@ -67,6 +67,21 @@ test('dates and names', () => {
   assert.equal(defaultDir('oldest_open_pr_at'), 'asc');
 });
 
+test('data age sorts by the exact fetch time, whatever the coarse label', () => {
+  const at = [
+    entry('a', {}, '2026-10-08T10:04:00Z'),
+    entry('b', {}, '2026-10-08T10:05:00Z'),
+    entry('c', null, null),
+    entry('d', null, '2026-10-08T08:00:00Z'),
+  ];
+  const now = Date.parse('2026-10-08T12:00:00Z');
+  assert.equal(ago(at[0]!.fetched_at, now), ago(at[1]!.fetched_at, now), '1 h 56 m and 1 h 55 m both read 1h');
+  assert.equal(names(sortEntries(at, 'fetched', 'asc')), 'badc', 'ascending: youngest first');
+  assert.equal(names(sortEntries(at, 'fetched', 'desc')), 'dabc');
+  assert.equal(defaultDir('fetched'), 'desc', 'stalest first on the first click');
+  assert.equal(COLUMNS[1]!.key, 'fetched');
+});
+
 test('names compare numerically and ignore case', () => {
   const e = [entry('app10', {}), entry('App2', {}), entry('app1', {})];
   assert.deepEqual(sortEntries(e, 'name', 'asc').map((x) => x.repo), ['o/app1', 'o/App2', 'o/app10']);
