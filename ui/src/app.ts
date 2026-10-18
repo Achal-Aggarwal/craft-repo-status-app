@@ -3,7 +3,7 @@
 
 import {
   COLUMNS, RECENT, WINDOWS, MANUAL, windowById, value, orderedEntries, nextSort, dropIndex,
-  freshness, ago, totals, urgentAcross,
+  freshness, ago, totals, urgentAcross, tokenStatus,
 } from './model.ts';
 import type { Column, Meta, RepoEntry, Snapshot, Sort } from './model.ts';
 
@@ -346,9 +346,13 @@ export function start(api: Api): () => void {
     $('banner').hidden = !msgs.length;
     $('banner').textContent = msgs.join(' — ');
 
-    $('next').textContent = snap.refreshing ? 'Polling GitHub…'
-      : snap.next_refresh_at ? `Next poll ${clock(Date.parse(snap.next_refresh_at))} · every ${Math.round(snap.poll_secs / 60)} min` : '';
+    $('next').textContent = snap.refreshing ? 'Fetching from GitHub…'
+      : snap.next_refresh_at ? `Next fetch ${clock(Date.parse(snap.next_refresh_at))} · each repo every ${Math.round(snap.poll_secs / 60)} min` : '';
     $('budget').textContent = snap.rate_limit_remaining != null ? `GitHub budget ${num(snap.rate_limit_remaining)}` : '';
+    const token = tokenStatus(snap.token);
+    $('token').textContent = token.text;
+    $('token').title = token.title;
+    $('token').classList.toggle('bad', token.bad);
     const critical = snap.repos.reduce((n, r) => n + (r.stats?.critical_issues ?? 0), 0);
     $('urgent-count').textContent = critical ? String(critical) : '';
     $('urgent-count').title = `${critical} critical open issues`;
