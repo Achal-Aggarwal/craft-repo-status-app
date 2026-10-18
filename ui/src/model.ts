@@ -78,6 +78,10 @@ export interface Snapshot {
   error: string | null;
   /** The token the last poll used; null (or absent, from an older build) before the first poll. */
   token?: TokenStatus | null;
+  /** The repo being fetched right now (absent from older builds). */
+  fetching?: string | null;
+  /** Repos refreshed by hand from their row, waiting their turn. */
+  requested?: string[];
 }
 
 export interface TokenStatus {
@@ -290,6 +294,11 @@ export function freshness(snap: Pick<Snapshot, 'repos' | 'stale_after_secs'>, no
   const oldest = times.length && times.every((t) => t !== null) ? Math.min(...(times as number[])) : null;
   const stale = !snap.repos.length || snap.repos.some((r) => isStale(r, snap.stale_after_secs, now));
   return { oldest, stale };
+}
+
+/** A row's own refresh is queued or under way, so its button spins. */
+export function isRefreshing(snap: Pick<Snapshot, 'fetching' | 'requested'>, repo: string): boolean {
+  return snap.fetching === repo || (snap.requested ?? []).includes(repo);
 }
 
 /** The footer's account of the GitHub token: `bad` when polling can't work. */

@@ -246,6 +246,25 @@ test('the Fetched column shows each repo’s data age and sorts by it, freshest 
   assert.deepEqual(h.rows(), ['beta', 'alpha', 'delta', 'gamma']);
 });
 
+test('a row’s refresh button refetches only that repo, and spins while it waits', async () => {
+  const h = await setup();
+  const button = () => h.row('gamma').querySelector<HTMLButtonElement>('.row-refresh')!;
+  pointer(h, button(), 'pointerdown', 25);
+  pointer(h, h.win as unknown as EventTarget, 'pointermove', 60);
+  button().click();
+  assert.equal(h.view(), 'repos', 'not a click on the row');
+  assert.deepEqual(h.rows(), ['beta', 'gamma', 'alpha'], 'not a drag');
+  assert.deepEqual(h.calls.filter((c) => c.cmd.startsWith('refresh')), [{ cmd: 'refresh_repo', args: { repo: 'o/gamma' } }]);
+  assert.ok(button().classList.contains('spinning'), 'spins at once, before the poller answers');
+
+  h.emit('craft:snapshot', { ...snapshot(), fetching: 'o/gamma', requested: ['o/alpha'] });
+  assert.ok(button().classList.contains('spinning'));
+  assert.ok(h.row('alpha').querySelector('.row-refresh.spinning'), 'queued counts too');
+  assert.ok(!h.row('beta').querySelector('.row-refresh.spinning'));
+  h.emit('craft:snapshot', snapshot());
+  assert.ok(!h.doc.querySelector('.row-refresh.spinning'), 'done');
+});
+
 test('the window picker switches the activity columns and remembers', async () => {
   const h = await setup({ snap: snapshot([repo('alpha', { recent: { '7d': { commits: 7, prs_opened: 0, prs_merged: 0, issues_opened: 0, people: 0 } } })]) });
   const commits = () => h.row('alpha').cells[COLUMNS.findIndex((c) => c.key === 'recent_commits')]!.textContent;
