@@ -2,7 +2,7 @@ Craft Repo Status App
 =====================
 
 Find out the status of the craft apps: a tray dashboard ("Craft Status") that
-polls the storytold `*craft` repositories on GitHub every 5 minutes, keeps a
+polls the storytold `*craft` repositories on GitHub every 30 minutes, keeps a
 cache, and tells you what to fix first. Everything runs locally: no server.
 
 ![Craft Status: the Repos table, sorted by urgency](docs/screenshot.png)
@@ -38,10 +38,10 @@ sort by a column again.
 
 - **Activity** covers the window picked in that group's header: the last
   10 min, 30 min, hour, 4 h (the default), 12 h, day or week, since the last
-  release, or all time. Every poll fetches all nine, so switching is instant;
+  release, or all time. Every fetch gets all nine, so switching is instant;
   the choice is remembered. People are distinct commit authors in the window;
   all time, it is GitHub's contributor count. The numbers are as of the last
-  poll, so short windows lag by up to `poll_minutes`.
+  fetch of that repo, so short windows lag by up to `poll_minutes`.
 - **Since last release** starts at each repo's own latest build, so the span
   differs per row (hover a number for the release and its date). Its commits
   are the **Unreleased** count; PRs, merges, issues and people count from the
@@ -91,35 +91,40 @@ scored.
 
 ## Polling and cache
 
-- The app polls every `poll_minutes` (default 5), one repo at a time, pausing
-  after each GraphQL request as long as it took: GitHub allows only 60 s of
-  GraphQL server time per minute, and back-to-back queries exceed it. Each
-  repo costs about six GraphQL requests and one REST request: roughly 100 of
-  the 5,000 GraphQL points GitHub allows per hour per cycle. It never uses
-  search, which GitHub limits far more tightly (to about 30 a minute); PR and
-  issue counts per window come from walking the recent PRs and issues.
+- The app fetches one repo at a time, 20 s apart: first any repo with no data
+  (or data cached by an older build that lacks a column), then whichever repo
+  has the oldest data, once it is `poll_minutes` old (default 30). Within a
+  repo it pauses after each GraphQL request as long as it took: GitHub allows
+  only 60 s of GraphQL server time per minute, and its secondary rate limits
+  punish bursts. Each repo costs about six GraphQL requests and one REST
+  request. It never uses search, which GitHub limits far more tightly (to
+  about 30 a minute); PR and issue counts per window come from walking the
+  recent PRs and issues.
 - Each repo's icon is `assets/app-icon/hicolor/64x64/apps/*.png` on its default
   branch. It is downloaded once and again only when the file changes; it's
   kept in the cache. Repos without one (libraries) get a lettered tile.
-- If fewer than 150 points remain, polling slows to every 30 minutes. If
-  GitHub rate-limits the app, it stops that poll at once and waits three
-  intervals. If every repo fails (offline, or just woke from sleep), it
-  retries after one minute.
+- If fewer than 150 points remain, fetching pauses for 30 minutes. If GitHub
+  rate-limits the app, it pauses for 5 minutes, or until GitHub's retry time
+  if that is later, doubling up to an hour while the limit persists. A repo
+  whose fetch fails (offline, just woke from sleep) is retried after 10
+  minutes; the others carry on.
 - Timing follows the wall clock, so a laptop that wakes from sleep polls
   within about 15 s.
-- `⌘R` or the ⟳ button refreshes immediately.
+- `⌘R` or the ⟳ button makes every repo due at once; they are still fetched
+  one at a time, stalest first, and a rate-limit pause still holds.
 - Two caches in `~/Library/Caches/craft-status/` survive restarts:
   - `raw/<owner>@<repo>.json`: each repo's commit authors, PRs and issues
     from the last week (or since the latest build). Each poll fetches only
     what's new since the previous one, and refetches from scratch every six
     hours to drop deleted issues and pick up late-dated commits.
   - `snapshot.json`: what the window shows, saved after each repo. On launch
-    the window shows it at once, marked `STALE` if it's old. If it is less
-    than one interval old, the app skips the poll it would otherwise run at
-    launch.
-- The GitHub token comes from `github_token` in the config. If that is empty,
-  it comes from `$GITHUB_TOKEN` or `$GH_TOKEN`, and if those are unset, from
-  `gh auth token`.
+    the window shows it at once, marked `STALE` if it's old. Repos whose
+    data is still fresh aren't refetched at launch.
+- The GitHub token comes from the first of `$CRAFT_STATUS_GITHUB_TOKEN`,
+  `$GITHUB_TOKEN` and `$GH_TOKEN` that is set, then from `github_token` in the
+  config, then from `gh auth token`. The app is started by launchd, not a
+  shell, so it sees variables set with `launchctl setenv` (then relaunch it),
+  not those exported in your shell profile.
 
 ## Tray and window
 

@@ -76,6 +76,15 @@ export interface Snapshot {
   stale_after_secs: number;
   rate_limit_remaining: number | null;
   error: string | null;
+  /** The token the last poll used; null (or absent, from an older build) before the first poll. */
+  token?: TokenStatus | null;
+}
+
+export interface TokenStatus {
+  /** `$GITHUB_TOKEN`, `config`, `gh CLI`…; null when no token was found. */
+  source: string | null;
+  /** GitHub answered 401. */
+  rejected: boolean;
 }
 
 /** Window settings and facts from `get_meta` in crates/craft-status-app/src/lib.rs. */
@@ -278,6 +287,22 @@ export function freshness(snap: Pick<Snapshot, 'repos' | 'stale_after_secs'>, no
   const oldest = times.length && times.every((t) => t !== null) ? Math.min(...(times as number[])) : null;
   const stale = !snap.repos.length || snap.repos.some((r) => isStale(r, snap.stale_after_secs, now));
   return { oldest, stale };
+}
+
+/** The footer's account of the GitHub token: `bad` when polling can't work. */
+export function tokenStatus(token: TokenStatus | null | undefined): { text: string; title: string; bad: boolean } {
+  if (!token) return { text: '', title: '', bad: false };
+  if (!token.source) {
+    return {
+      text: 'No GitHub token',
+      title: "GitHub's GraphQL API needs a token: set CRAFT_STATUS_GITHUB_TOKEN (launchctl setenv), github_token in the config, or run `gh auth login`",
+      bad: true,
+    };
+  }
+  if (token.rejected) {
+    return { text: `Token rejected (${token.source})`, title: `GitHub answered 401 to the token from ${token.source}: replace it or unset it`, bad: true };
+  }
+  return { text: `Token: ${token.source}`, title: `Polling GitHub with the token from ${token.source}`, bad: false };
 }
 
 // ───────────────────────────── formatting ─────────────────────────────

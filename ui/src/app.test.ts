@@ -253,6 +253,20 @@ test('status pill, failures banner and budget', async () => {
   assert.equal(h.doc.getElementById('budget')!.textContent, 'GitHub budget 4,000');
   assert.ok(h.row('beta').classList.contains('error'));
 
+  assert.equal(h.doc.getElementById('token')!.textContent, '', 'nothing to say before the first poll');
+
+  const token = h.doc.getElementById('token')!;
+  h.emit('craft:snapshot', { ...snapshot(), token: { source: '$GITHUB_TOKEN', rejected: false } });
+  assert.equal(token.textContent, 'Token: $GITHUB_TOKEN');
+  assert.ok(!token.classList.contains('bad'));
+  h.emit('craft:snapshot', { ...snapshot(), token: { source: 'config', rejected: true }, error: 'GitHub rejected the token from config (401)' });
+  assert.equal(token.textContent, 'Token rejected (config)');
+  assert.ok(token.classList.contains('bad'));
+  assert.match(banner.textContent ?? '', /rejected the token from config/);
+  h.emit('craft:snapshot', { ...snapshot(), token: { source: null, rejected: false } });
+  assert.equal(token.textContent, 'No GitHub token');
+  assert.ok(token.classList.contains('bad'));
+
   h.emit('craft:snapshot', { ...snapshot(), refreshing: true });
   assert.equal(h.doc.getElementById('fresh-pill')!.textContent, 'REFRESHING');
   assert.equal(banner.hidden, true);

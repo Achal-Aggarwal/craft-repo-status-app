@@ -137,6 +137,7 @@ tfoot td { color: var(--muted); font-weight: 600; border-bottom: 0; position: st
 
 footer { display: flex; align-items: center; gap: 14px; padding: 6px 15px; border-top: 1px solid var(--border); color: var(--muted); font-size: 10.5px; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums; }
 .spacer { flex: 1; }
+#token.bad { color: var(--bad); font-weight: 600; }
 .footer-link { padding: 0; border: 0; background: none; color: var(--muted); font-size: 10.5px; }
 .footer-link:hover { color: var(--fg); text-decoration: underline; }
 #resize { position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }

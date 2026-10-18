@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  sortEntries, manualOrder, orderedEntries, nextSort, dropIndex, MANUAL, versionKey, freshness, isStale, ago, compact,
+  sortEntries, manualOrder, orderedEntries, nextSort, dropIndex, MANUAL, versionKey, freshness, isStale, ago, compact, tokenStatus,
   totals, urgentAcross, defaultDir, value, windowById, WINDOWS, COLUMNS, COLUMN,
 } from './model.ts';
 import type { Activity, RepoEntry, RepoStats, UrgentIssue } from './model.ts';
@@ -182,6 +182,19 @@ test('recent-activity columns follow the selected window', () => {
   assert.equal(names(sortEntries(e, 'recent_merged', 'desc', 'all')), 'abold');
   assert.equal(value(a, 'recent_commits', 'release'), null, 'no release');
   assert.deepEqual(WINDOWS.map((w) => w.id), ['10m', '30m', '1h', '4h', '12h', '1d', '7d', 'release', 'all']);
+});
+
+test('token status', () => {
+  assert.deepEqual(tokenStatus(null), { text: '', title: '', bad: false });
+  assert.deepEqual(tokenStatus(undefined), { text: '', title: '', bad: false });
+  assert.equal(tokenStatus({ source: '$GITHUB_TOKEN', rejected: false }).text, 'Token: $GITHUB_TOKEN');
+  assert.equal(tokenStatus({ source: '$GITHUB_TOKEN', rejected: false }).bad, false);
+  assert.deepEqual(
+    { ...tokenStatus({ source: 'config', rejected: true }), title: '' },
+    { text: 'Token rejected (config)', title: '', bad: true },
+  );
+  assert.equal(tokenStatus({ source: null, rejected: false }).text, 'No GitHub token');
+  assert.equal(tokenStatus({ source: null, rejected: false }).bad, true);
 });
 
 test('columns: unique keys, every recent column titled with its span', () => {
